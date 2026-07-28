@@ -1,0 +1,40 @@
+name: Build and Deploy to Azure Container Apps
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to Azure Container Registry
+        run: az acr login --name aisecarchtan2026
+
+      - name: Build and push image
+        run: |
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/ai-security-architect:${{ github.sha }} .
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/ai-security-architect:${{ github.sha }}
+
+      - name: Deploy to Azure Container Apps
+        uses: azure/container-apps-deploy-action@v2
+        with:
+          acrName: aisecarchtan2026
+          containerAppName: ai-security-architect-app
+          resourceGroup: ai-security-architect-rg
+          imageToDeploy: ${{ secrets.ACR_LOGIN_SERVER }}/ai-security-architect:${{ github.sha }}
+          
