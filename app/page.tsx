@@ -31,14 +31,14 @@ export default function Home() {
             <h1 className="text-xl font-semibold tracking-tight text-slate-100 sm:text-2xl">
               AI Security Architect Assistant
             </h1>
-            <p className="font-mono text-xs text-slate-500 sm:text-sm">
+            <p className="font-mono text-xs text-slate-300 sm:text-sm">
               AI-powered cloud architecture threat modeling and security guidance
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="rounded-md border border-panelBorder bg-panel px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-400">
+          <span className="rounded-md border border-panelBorder bg-panel px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-300">
             Mock Data Mode
           </span>
         </div>

@@ -44,11 +44,11 @@ export default function MermaidDiagram({ mermaidCode }: Props) {
           theme: "dark",
           securityLevel: "strict",
           themeVariables: {
-            background: "#0d1420",
-            primaryColor: "#111722",
-            primaryTextColor: "#e5edf5",
-            primaryBorderColor: "#38bdf8",
-            lineColor: "#38bdf8",
+            background: "#1E2A54",
+            primaryColor: "#253061",
+            primaryTextColor: "#E5EDF5",
+            primaryBorderColor: "#38BDF8",
+            lineColor: "#38BDF8",
             fontFamily: "JetBrains Mono, monospace",
           },
         });

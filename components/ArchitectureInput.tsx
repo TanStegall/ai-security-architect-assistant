@@ -41,7 +41,7 @@ export default function ArchitectureInput({ value, onChange, onAnalyze, isLoadin
     <div className="rounded-lg border border-panelBorder bg-panel p-5">
       <div className="mb-4 flex items-center gap-2">
         <ShieldAlert className="h-4 w-4 text-accent" />
-        <h2 className="font-mono text-xs uppercase tracking-widest text-slate-400">
+        <h2 className="font-mono text-xs uppercase tracking-widest text-slate-300">
           Describe the architecture
         </h2>
       </div>
@@ -52,12 +52,12 @@ export default function ArchitectureInput({ value, onChange, onAnalyze, isLoadin
         placeholder="e.g. A React app on Vercel calls an API gateway, which calls Azure OpenAI. Uploaded files go to Blob Storage."
         rows={7}
         maxLength={4000}
-        className="w-full resize-y rounded-md border border-panelBorder bg-panel2 p-3 text-sm text-slate-200 placeholder:text-slate-600 focus:border-accent focus:outline-none"
+        className="w-full resize-y rounded-md border border-panelBorder bg-panel2 p-3 text-sm text-slate-100 placeholder:text-slate-300 focus:border-accent focus:outline-none"
       />
-      <div className="mt-1 text-xs text-slate-600">{value.length} / 4000 characters</div>
+      <div className="mt-1 text-xs text-slate-300">{value.length} / 4000 characters</div>
 
       <div className="mt-4">
-        <p className="mb-2 font-mono text-xs uppercase tracking-widest text-slate-500">
+        <p className="mb-2 font-mono text-xs uppercase tracking-widest text-slate-300">
           Or start from an example
         </p>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -66,10 +66,10 @@ export default function ArchitectureInput({ value, onChange, onAnalyze, isLoadin
               key={t.id}
               type="button"
               onClick={() => onChange(t.description)}
-              className="rounded-md border border-panelBorder bg-panel2 p-3 text-left text-xs text-slate-300 transition hover:border-accent/60"
+              className="rounded-md border border-panelBorder bg-panel2 p-3 text-left text-xs text-slate-200 transition hover:border-accent/60"
             >
-              <div className="mb-1 font-medium text-slate-200">{t.name}</div>
-              <div className="line-clamp-2 text-slate-500">{t.description}</div>
+              <div className="mb-1 font-medium text-slate-100">{t.name}</div>
+              <div className="line-clamp-2 text-slate-300">{t.description}</div>
             </button>
           ))}
         </div>

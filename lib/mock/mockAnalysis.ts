@@ -64,7 +64,15 @@ export const MOCK_ANALYSIS_RESULT: AnalysisResult = {
     gateway --> ai
     gateway --> db
     gateway --> storage
-    classDef security fill:#0ea5e9,stroke:#0369a1,color:#fff;
-    class idp security;
-    class gateway security;`,
+   classDef identity fill:#EDE9FE,stroke:#7C3AED,color:#5B21B6;
+    classDef compute fill:#DBEAFE,stroke:#2563EB,color:#1E40AF;
+    classDef gateway fill:#DBEAFE,stroke:#1D4ED8,color:#1E3A8A;
+    classDef ai fill:#FFEDD5,stroke:#EA580C,color:#9A3412;
+    classDef data fill:#DCFCE7,stroke:#16A34A,color:#166534;
+    class idp identity;
+    class frontend compute;
+    class gateway gateway;
+    class ai ai;
+    class storage,db data;`,
 };
+
