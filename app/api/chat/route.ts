@@ -89,7 +89,8 @@ function runSecurityCheckStub(componentType: string, description: string): strin
     logging: "Reviewed logging and monitoring coverage for this component.",
     other: "Reviewed general configuration for this component.",
   };
-  return canned[componentType] ?? canned.other;
+  const base = canned[componentType] ?? canned.other;
+  return `${base} (Target: ${description})`;
 }
 
 interface ToolEvent {
