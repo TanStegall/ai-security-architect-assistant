@@ -23,7 +23,7 @@ export default function Home() {
   }
 
   return (
-    <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[1fr_380px]">
+   <div className="grid h-screen grid-cols-1 lg:grid-cols-[1fr_380px] grid-rows-[auto_1fr] overflow-hidden">
       <header className="col-span-1 flex flex-wrap items-center justify-between gap-4 border-b border-panelBorder px-6 py-4 lg:col-span-2">
         <div className="flex items-center gap-2.5">
           <ShieldCheck className="h-5 w-5 text-accent" />
@@ -41,7 +41,7 @@ export default function Home() {
         </span>
       </header>
 
-      <main className="overflow-y-auto px-6 py-6">
+      <main className="min-h-0 overflow-y-auto px-6 py-6">
         <div className="flex flex-col gap-6">
           <ArchitectureInput
             value={description}
@@ -53,7 +53,7 @@ export default function Home() {
         </div>
       </main>
 
-     <aside className="hidden border-l border-panelBorder lg:flex lg:flex-col">
+     <aside className="hidden min-h-0 border-l border-panelBorder lg:flex lg:flex-col">
   <div className="h-full p-3">
     <ChatPanel />
   </div>
