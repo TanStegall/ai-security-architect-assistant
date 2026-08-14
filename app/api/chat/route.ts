@@ -1,73 +1,97 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-
-/**
- * Step 4b: Real Claude-powered /api/chat route with tool-calling.
- *
- * Replaces the Step 4a-3 keyword-matching simulation. Claude now genuinely
- * decides which security checks are relevant to the user's message, "runs"
- * them (via a stub function below — see NOTE), and produces structured
- * findings through the report_findings tool. The response shape returned
- * to the frontend (`{ events: [...] }`) is unchanged, so ChatPanel.tsx
- * doesn't need to change.
- *
- * NOTE on check_component_security: this is still a STUB. It doesn't
- * actually scan your infrastructure — it returns a short canned assessment
- * so the tool-calling loop has something to work with. Step 4c will swap
- * this stub for real MCP server calls that inspect actual cloud resources.
- */
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+const MCP_URL = "https://kyora-iq-mcp.onrender.com/mcp";
+const MCP_TOKEN = process.env.KYORA_MCP_TOKEN;
+
+let mcpClientPromise: Promise<Client> | null = null;
+
+function getMcpClient(): Promise<Client> {
+  if (!mcpClientPromise) {
+    mcpClientPromise = (async () => {
+      if (!MCP_TOKEN) throw new Error("Missing KYORA_MCP_TOKEN environment variable.");
+
+      const transport = new StreamableHTTPClientTransport(new URL(MCP_URL), {
+        requestInit: {
+          headers: { Authorization: `Bearer ${MCP_TOKEN}` },
+        },
+      });
+
+      const client = new Client({ name: "ai-security-architect-assistant", version: "1.0.0" }, { capabilities: {} });
+      await client.connect(transport);
+      return client;
+    })();
+  }
+  return mcpClientPromise;
+}
+
+function extractText(result: Awaited<ReturnType<Client["callTool"]>>): string {
+  const content = result.content as { type: string; text?: string }[];
+  const textBlock = content.find((c) => c.type === "text");
+  return textBlock?.text ?? "No result returned.";
+}
+
 const SYSTEM_PROMPT = `You are a security architecture review assistant embedded in a dashboard tool. A user has described a software architecture (frontend, backend, hosting, auth, storage, etc.) and may ask follow-up questions about it.
 
-Your job:
-1. Identify which security-relevant components are worth checking based on what the user described or asked about (e.g. authentication, storage, network exposure, secrets management, logging).
-2. For each relevant component, call the check_component_security tool to get an assessment.
-3. Once you've gathered enough assessments, call report_findings with a short summary and a list of specific findings, each with a severity (high, medium, or low).
+You have access to a real compliance framework reference server (NIST 800-53, HIPAA, SOC 2, ISO 42001, EU AI Act, OWASP, MITRE, and more). Your findings must be grounded in actual controls from this server, not general opinion.
 
-Only check components that are actually relevant to what the user described or asked — don't run every check every time. Keep the summary to 1-2 sentences. Findings should be short, specific, and actionable (mention the actual component or gap, not generic advice).`;
+Your job:
+1. Identify which security-relevant areas are worth checking based on what the user described or asked about (e.g. authentication, storage, network exposure, secrets management, logging).
+2. Use search_compliance_controls to find real controls relevant to each area. Use get_compliance_control_detail if you need the full text of a specific control before citing it.
+3. Once you have enough grounded findings, call report_findings with a short summary and a list of specific findings. Each finding's title MUST reference the specific framework and control ID it's based on, e.g. "[NIST 800-53 AC-3] Confirm the API gateway enforces access control before reaching Azure OpenAI."
+
+Only search for controls relevant to what the user actually described or asked — don't search everything every time. Aim to gather 2-4 relevant controls, then stop searching and report. Keep the summary to 1-2 sentences. If you cannot find a relevant control for something, do not fabricate one — either search again with different terms or omit that point.
+
+Important: once you have gathered enough grounded findings, call report_findings immediately in that same turn. Do not send a plain-text message announcing that you are ready or that you have enough information — go straight to calling the tool.`;
 
 const tools: Anthropic.Tool[] = [
   {
-    name: "check_component_security",
+    name: "search_compliance_controls",
     description:
-      "Runs a security assessment for a specific component type mentioned in the architecture (e.g. authentication, storage, network, secrets, logging). Returns a short assessment.",
+      "Searches real compliance controls across all supported frameworks (NIST 800-53, HIPAA, SOC 2, ISO 42001, EU AI Act, OWASP, MITRE) by keyword. Use this to find controls relevant to a specific architecture component.",
     input_schema: {
       type: "object",
       properties: {
-        component_type: {
-          type: "string",
-          enum: ["authentication", "storage", "network", "secrets", "logging", "other"],
-          description: "The category of component being checked",
-        },
-        description: {
-          type: "string",
-          description: "Brief description of the specific component being checked, drawn from the user's architecture",
-        },
+        query: { type: "string", description: "Keyword(s) to search for, e.g. 'access control', 'encryption at rest', 'authentication'" },
       },
-      required: ["component_type", "description"],
+      required: ["query"],
+    },
+  },
+  {
+    name: "get_compliance_control_detail",
+    description: "Gets the full text, guidance, and cross-framework mappings for one specific control, once you know its framework and control ID.",
+    input_schema: {
+      type: "object",
+      properties: {
+        framework_id: { type: "string", description: "e.g. 'nist-800-53', 'hipaa-security-rule'" },
+        control_id: { type: "string", description: "e.g. 'AC-3'" },
+      },
+      required: ["framework_id", "control_id"],
     },
   },
   {
     name: "report_findings",
-    description: "Submits the final structured findings from the security review. Call this once, after all relevant checks are done.",
+    description: "Submits the final structured findings from the security review. Call this once, after gathering enough grounded findings.",
     input_schema: {
       type: "object",
       properties: {
-        summary: {
-          type: "string",
-          description: "A 1-2 sentence summary of the review",
-        },
+        summary: { type: "string", description: "A 1-2 sentence summary of the review" },
         findings: {
           type: "array",
           items: {
             type: "object",
             properties: {
               severity: { type: "string", enum: ["high", "medium", "low"] },
-              title: { type: "string", description: "A short, specific finding" },
+              title: {
+                type: "string",
+                description: "Must start with [FRAMEWORK CONTROL_ID] followed by the specific, actionable finding",
+              },
             },
             required: ["severity", "title"],
           },
@@ -77,21 +101,6 @@ const tools: Anthropic.Tool[] = [
     },
   },
 ];
-
-// STUB: simulates running a security check. Step 4c replaces this with
-// real MCP server calls against actual infrastructure.
-function runSecurityCheckStub(componentType: string, description: string): string {
-  const canned: Record<string, string> = {
-    authentication: "Reviewed identity provider and token handling configuration.",
-    storage: "Checked container/bucket permissions and encryption-at-rest settings.",
-    network: "Reviewed exposed endpoints and network-level access controls.",
-    secrets: "Checked how credentials and API keys are stored and accessed.",
-    logging: "Reviewed logging and monitoring coverage for this component.",
-    other: "Reviewed general configuration for this component.",
-  };
-  const base = canned[componentType] ?? canned.other;
-  return `${base} (Target: ${description})`;
-}
 
 interface ToolEvent {
   role: "tool";
@@ -112,17 +121,19 @@ export async function POST(req: NextRequest) {
     const userMessage: string = body?.message ?? "";
 
     const events: (ToolEvent | AssistantEvent)[] = [];
-
     const messages: Anthropic.MessageParam[] = [{ role: "user", content: userMessage }];
 
-    // Tool-calling loop: keep going until Claude stops requesting tools.
+    const mcpClient = await getMcpClient();
+
+    let hasReportedFindings = false;
     let guard = 0;
-    while (guard < 6) {
+
+    while (guard < 10) {
       guard++;
 
       const response = await anthropic.messages.create({
         model: "claude-sonnet-5",
-        max_tokens: 1024,
+        max_tokens: 4096,
         system: SYSTEM_PROMPT,
         tools,
         messages,
@@ -130,8 +141,28 @@ export async function POST(req: NextRequest) {
 
       messages.push({ role: "assistant", content: response.content });
 
-      if (response.stop_reason !== "tool_use") {
-        // Claude finished without calling report_findings — fall back to its text.
+      const toolUseBlocks = response.content.filter(
+        (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
+      );
+
+      if (toolUseBlocks.length === 0) {
+        if (hasReportedFindings) {
+          const textBlock = response.content.find((b) => b.type === "text");
+          if (textBlock?.type === "text" && textBlock.text.trim()) {
+            events.push({ role: "assistant", content: textBlock.text });
+          }
+          break;
+        }
+
+        if (guard < 10) {
+          messages.push({
+            role: "user",
+            content:
+              "Now call the report_findings tool with your summary and findings based on everything you've gathered so far. Do not reply with plain text.",
+          });
+          continue;
+        }
+
         const textBlock = response.content.find((b) => b.type === "text");
         events.push({
           role: "assistant",
@@ -143,25 +174,43 @@ export async function POST(req: NextRequest) {
       const toolResults: Anthropic.ToolResultBlockParam[] = [];
       let finishedWithFindings = false;
 
-      for (const block of response.content) {
-        if (block.type !== "tool_use") continue;
-
-        if (block.name === "check_component_security") {
-          const input = block.input as { component_type: string; description: string };
-          const result = runSecurityCheckStub(input.component_type, input.description);
+      for (const block of toolUseBlocks) {
+        if (block.name === "search_compliance_controls") {
+          const input = block.input as { query: string };
+          const mcpResult = await mcpClient.callTool({
+            name: "search_controls",
+            arguments: { query: input.query },
+          });
+          const resultText = extractText(mcpResult);
 
           events.push({
             role: "tool",
-            label: `Checking ${input.component_type}`,
+            label: `Searching compliance controls: "${input.query}"`,
             status: "done",
-            result,
+            result: resultText.slice(0, 150) + (resultText.length > 150 ? "..." : ""),
           });
 
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: block.id,
-            content: result,
+          toolResults.push({ type: "tool_result", tool_use_id: block.id, content: resultText });
+          continue;
+        }
+
+        if (block.name === "get_compliance_control_detail") {
+          const input = block.input as { framework_id: string; control_id: string };
+          const mcpResult = await mcpClient.callTool({
+            name: "get_control",
+            arguments: { framework: input.framework_id, control_id: input.control_id },
           });
+          const resultText = extractText(mcpResult);
+
+          events.push({
+            role: "tool",
+            label: `Looking up ${input.framework_id} ${input.control_id}`,
+            status: "done",
+            result: resultText.slice(0, 150) + (resultText.length > 150 ? "..." : ""),
+          });
+
+          toolResults.push({ type: "tool_result", tool_use_id: block.id, content: resultText });
+          continue;
         }
 
         if (block.name === "report_findings") {
@@ -170,20 +219,14 @@ export async function POST(req: NextRequest) {
             findings: { severity: "high" | "medium" | "low"; title: string }[];
           };
 
-          events.push({
-            role: "assistant",
-            content: input.summary,
-            findings: input.findings,
-          });
-
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: block.id,
-            content: "Findings recorded.",
-          });
-
+          events.push({ role: "assistant", content: input.summary, findings: input.findings });
+          toolResults.push({ type: "tool_result", tool_use_id: block.id, content: "Findings recorded." });
           finishedWithFindings = true;
+          hasReportedFindings = true;
+          continue;
         }
+
+        toolResults.push({ type: "tool_result", tool_use_id: block.id, content: "Tool not implemented." });
       }
 
       messages.push({ role: "user", content: toolResults });
@@ -195,7 +238,14 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error("Chat route error:", err);
     return NextResponse.json(
-      { events: [{ role: "assistant", content: "Something went wrong calling Claude. Check the server terminal for details." }] },
+      {
+        events: [
+          {
+            role: "assistant",
+            content: "Something went wrong reaching Claude or the compliance server. Check the server terminal for details.",
+          },
+        ],
+      },
       { status: 500 }
     );
   }
