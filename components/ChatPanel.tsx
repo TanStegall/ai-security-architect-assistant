@@ -1,12 +1,14 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from "react";
 import { Send, CheckCircle2, Loader2, ShieldAlert, ShieldCheck } from "lucide-react";
 
 /**
- * Message data model
- *
- * As of Step 4a-3, handleSend() calls the simulated /api/chat route.
- * Step 4b will swap that route's internals for a real LLM call — this
- * component's fetch call and message shape shouldn't need to change.
+ * Same visual styling as before (unchanged, per request) — the only
+ * changes are:
+ *  1. Removed the hardcoded INITIAL_MESSAGES sample conversation. The
+ *     panel now genuinely starts empty until a real message is sent.
+ *  2. Exposed a `sendMessage(text)` method via ref, so page.tsx can
+ *     trigger a real analysis from the "Analyze Architecture" button
+ *     instead of the two being disconnected.
  */
 
 type Severity = "high" | "medium" | "low";
@@ -36,29 +38,15 @@ interface ToolMessage {
 
 type Message = UserMessage | AssistantMessageType | ToolMessage;
 
+export interface ChatPanelHandle {
+  sendMessage: (text: string) => void;
+}
+
 const SEVERITY_STYLES: Record<Severity, { color: string; bg: string; border: string }> = {
   high: { color: "#f87171", bg: "rgba(248,113,113,0.1)", border: "rgba(248,113,113,0.3)" },
   medium: { color: "#fbbf24", bg: "rgba(251,191,36,0.1)", border: "rgba(251,191,36,0.3)" },
   low: { color: "#4ade80", bg: "rgba(74,222,128,0.1)", border: "rgba(74,222,128,0.3)" },
 };
-
-const INITIAL_MESSAGES: Message[] = [
-  {
-    role: "user",
-    content: "React app on Vercel calls an API gateway, which calls Azure OpenAI. Uploaded files go to Blob Storage.",
-  },
-  { role: "tool", label: "Checking authentication flow", status: "done", result: "No auth layer found between gateway and OpenAI" },
-  { role: "tool", label: "Reviewing storage access controls", status: "done", result: "Blob Storage container permissions checked" },
-  {
-    role: "assistant",
-    content: "I reviewed the architecture and found a few issues worth addressing before this goes further.",
-    findings: [
-      { severity: "high", title: "API gateway has no authentication in front of Azure OpenAI" },
-      { severity: "medium", title: "Blob Storage container may allow public read access" },
-      { severity: "low", title: "No rate limiting mentioned on the gateway" },
-    ],
-  },
-];
 
 function ToolActivity({ label, status, result }: ToolMessage) {
   return (
@@ -173,8 +161,8 @@ function AssistantMessageBubble({ content, findings }: { content: string; findin
   );
 }
 
-export default function ChatPanel() {
-  const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
+const ChatPanel = forwardRef<ChatPanelHandle>((_props, ref) => {
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -183,11 +171,11 @@ export default function ChatPanel() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending]);
 
-  async function handleSend() {
-    const text = input.trim();
-    if (!text || isSending) return;
+  async function sendMessage(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed || isSending) return;
 
-    setMessages((prev) => [...prev, { role: "user", content: text }]);
+    setMessages((prev) => [...prev, { role: "user", content: trimmed }]);
     setInput("");
     setIsSending(true);
 
@@ -195,14 +183,14 @@ export default function ChatPanel() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: trimmed }),
       });
 
       if (!res.ok) throw new Error(`Request failed: ${res.status}`);
 
       const data: { events: Message[] } = await res.json();
       setMessages((prev) => [...prev, ...data.events]);
-    } catch (err) {
+    } catch {
       setMessages((prev) => [
         ...prev,
         {
@@ -214,6 +202,10 @@ export default function ChatPanel() {
       setIsSending(false);
     }
   }
+
+  useImperativeHandle(ref, () => ({
+    sendMessage,
+  }));
 
   return (
     <div
@@ -242,6 +234,12 @@ export default function ChatPanel() {
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
+        {messages.length === 0 && !isSending && (
+          <div style={{ color: "#475467", fontSize: 13, textAlign: "center", padding: "60px 20px" }}>
+            Describe an architecture and click Analyze, or ask a question below.
+          </div>
+        )}
+
         {messages.map((m, i) => {
           if (m.role === "user") return <UserBubble key={i} content={m.content} />;
           if (m.role === "tool") return <ToolActivity key={i} {...m} />;
@@ -255,7 +253,7 @@ export default function ChatPanel() {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
+          onKeyDown={(e) => e.key === "Enter" && sendMessage(input)}
           placeholder="Ask a follow-up question..."
           disabled={isSending}
           style={{
@@ -271,7 +269,7 @@ export default function ChatPanel() {
           }}
         />
         <button
-          onClick={handleSend}
+          onClick={() => sendMessage(input)}
           disabled={isSending}
           style={{
             background: "#2563eb",
@@ -294,4 +292,8 @@ export default function ChatPanel() {
       `}</style>
     </div>
   );
-}
+});
+
+ChatPanel.displayName = "ChatPanel";
+
+export default ChatPanel;

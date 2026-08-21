@@ -1,12 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import Topbar from "@/components/Topbar";
 import ArchitectureInput from "@/components/ArchitectureInput";
-import ChatPanel from "@/components/ChatPanel";
-import { MOCK_ANALYSIS_RESULT } from "@/lib/mock/mockAnalysis";
-import type { AnalysisResult } from "@/lib/schemas";
+import ChatPanel, { ChatPanelHandle } from "@/components/ChatPanel";
 
 type View = "dashboard" | "assessment";
 
@@ -14,15 +12,58 @@ export default function Home() {
   const [view, setView] = useState<View>("dashboard");
   const [description, setDescription] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const chatRef = useRef<ChatPanelHandle>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   function handleAnalyze() {
+    if (!description.trim()) return;
     setIsLoading(true);
-    setResult(null);
-    setTimeout(() => {
-      setResult(MOCK_ANALYSIS_RESULT);
-      setIsLoading(false);
-    }, 800);
+    chatRef.current?.sendMessage(description);
+    setTimeout(() => setIsLoading(false), 400);
+  }
+
+  function handleUploadClick() {
+    setUploadError(null);
+    fileInputRef.current?.click();
+  }
+
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // reset so selecting the same file again still fires onChange
+    if (!file) return;
+
+    if (file.type !== "application/pdf") {
+      setUploadError("Only PDF files are supported.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadError("File is too large. Max size is 10MB.");
+      return;
+    }
+
+    setUploadError(null);
+    setIsExtracting(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/extract-pdf", { method: "POST", body: formData });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setUploadError(data.error ?? "Something went wrong reading that PDF.");
+        return;
+      }
+
+      setDescription(data.text);
+    } catch {
+      setUploadError("Couldn't reach the server. Check your connection and try again.");
+    } finally {
+      setIsExtracting(false);
+    }
   }
 
   return (
@@ -69,8 +110,8 @@ export default function Home() {
               <div>
                 <h1>Assessment</h1>
                 <p className="page-sub">
-                  Describe the architecture in plain English. Each finding must cite a real control before it can
-                  be reported.
+                  Describe the architecture in plain English, or upload a PDF. Each finding must cite a real
+                  control before it can be reported.
                 </p>
               </div>
             </div>
@@ -79,8 +120,38 @@ export default function Home() {
               <div className="panel">
                 <div className="panel-head">
                   <h3>Architecture</h3>
+                  <button
+                    className="btn btn-ghost"
+                    style={{ marginLeft: "auto", height: 32, padding: "0 12px", fontSize: 12.5 }}
+                    onClick={handleUploadClick}
+                    disabled={isExtracting}
+                  >
+                    {isExtracting ? "Reading PDF…" : "Upload PDF"}
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="application/pdf"
+                    onChange={handleFileSelected}
+                    style={{ display: "none" }}
+                  />
                 </div>
                 <div className="panel-body">
+                  {uploadError && (
+                    <div
+                      style={{
+                        fontSize: 12.5,
+                        color: "var(--red-dark)",
+                        background: "var(--red-soft)",
+                        border: "1px solid #F7C9CD",
+                        borderRadius: 6,
+                        padding: "8px 10px",
+                        marginBottom: 12,
+                      }}
+                    >
+                      {uploadError}
+                    </div>
+                  )}
                   <ArchitectureInput
                     value={description}
                     onChange={setDescription}
@@ -95,7 +166,7 @@ export default function Home() {
                   <h3>Live control lookup</h3>
                 </div>
                 <div className="panel-body" style={{ minHeight: 400 }}>
-                  <ChatPanel />
+                  <ChatPanel ref={chatRef} />
                 </div>
               </div>
             </div>
@@ -105,5 +176,3 @@ export default function Home() {
     </div>
   );
 }
-
-
