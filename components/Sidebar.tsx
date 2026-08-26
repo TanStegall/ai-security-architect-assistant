@@ -1,6 +1,6 @@
 "use client";
 
-type View = "dashboard" | "assessment";
+type View = "dashboard" | "assessment" | "findings";
 
 interface SidebarProps {
   activeView: View;
@@ -32,8 +32,8 @@ export default function Sidebar({ activeView, onNavigate, findingsCount }: Sideb
           Dashboard
         </button>
         <button
-          className={`nav-item${activeView === "dashboard" ? " active" : ""}`}
-          onClick={() => onNavigate("dashboard")}
+          className={`nav-item${activeView === "findings" ? " active" : ""}`}
+          onClick={() => onNavigate("findings")}
         >
           Findings
           <span className={`nav-count${findingsCount === 0 ? " zero" : ""}`}>{findingsCount}</span>

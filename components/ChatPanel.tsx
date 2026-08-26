@@ -1,19 +1,9 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from "react";
 import { Send, CheckCircle2, Loader2, ShieldAlert, ShieldCheck } from "lucide-react";
 
-/**
- * Same visual styling as before (unchanged, per request) — the only
- * changes are:
- *  1. Removed the hardcoded INITIAL_MESSAGES sample conversation. The
- *     panel now genuinely starts empty until a real message is sent.
- *  2. Exposed a `sendMessage(text)` method via ref, so page.tsx can
- *     trigger a real analysis from the "Analyze Architecture" button
- *     instead of the two being disconnected.
- */
+export type Severity = "high" | "medium" | "low";
 
-type Severity = "high" | "medium" | "low";
-
-interface Finding {
+export interface Finding {
   severity: Severity;
   title: string;
 }
@@ -40,6 +30,10 @@ type Message = UserMessage | AssistantMessageType | ToolMessage;
 
 export interface ChatPanelHandle {
   sendMessage: (text: string) => void;
+}
+
+interface ChatPanelProps {
+  onFindings?: (findings: Finding[]) => void;
 }
 
 const SEVERITY_STYLES: Record<Severity, { color: string; bg: string; border: string }> = {
@@ -161,7 +155,7 @@ function AssistantMessageBubble({ content, findings }: { content: string; findin
   );
 }
 
-const ChatPanel = forwardRef<ChatPanelHandle>((_props, ref) => {
+const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(({ onFindings }, ref) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -190,6 +184,16 @@ const ChatPanel = forwardRef<ChatPanelHandle>((_props, ref) => {
 
       const data: { events: Message[] } = await res.json();
       setMessages((prev) => [...prev, ...data.events]);
+
+      // Report any findings from this response up to the parent, so the
+      // Dashboard/Findings screens can show them without ChatPanel needing
+      // to know anything about those screens.
+      const newFindings = data.events
+        .filter((e): e is AssistantMessageType => e.role === "assistant" && !!e.findings)
+        .flatMap((e) => e.findings!);
+      if (newFindings.length > 0) {
+        onFindings?.(newFindings);
+      }
     } catch {
       setMessages((prev) => [
         ...prev,

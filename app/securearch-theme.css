@@ -1,4 +1,4 @@
-:root{
+  :root{
     /* surfaces */
     --ink:            #0A1428;
     --nav:            #0C1A33;
@@ -26,8 +26,10 @@
     /* severity */
     --sev-crit:       #8E0A16;
     --sev-high:       #C1121F;
-    --sev-med:        #B54708;
-    --sev-low:        #1D4ED8;
+    --sev-med:        #F97316;
+    --sev-low:        #F59E0B;
+    --orange-soft:    #FFF1E0;
+    --amber-soft:     #FFFBEB;
 
     --radius:         10px;
     --shadow:         0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.04);
@@ -183,16 +185,22 @@
   .dot{width:4px;height:4px;border-radius:50%;background:#5A719A;display:inline-block}
 
   /* ---------- stat cards ---------- */
-  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
+  .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:20px}
   .stat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)}
   .stat-top{display:flex;align-items:center;gap:9px;margin-bottom:12px}
   .stat-ico{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;background:var(--blue-soft)}
   .stat-ico svg{width:14px;height:14px;fill:var(--blue)}
   .stat-ico.red{background:var(--red-soft)}
   .stat-ico.red svg{fill:var(--red)}
+  .stat-ico.orange{background:var(--orange-soft)}
+  .stat-ico.orange svg{fill:var(--sev-med)}
+  .stat-ico.amber{background:var(--amber-soft)}
+  .stat-ico.amber svg{fill:var(--sev-low)}
   .stat-label{font-size:12.5px;font-weight:600;color:var(--t-body)}
   .stat-value{font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1}
   .stat-value.danger{color:var(--red)}
+  .stat-value.orange{color:var(--sev-med)}
+  .stat-value.amber{color:var(--sev-low)}
   .stat-foot{font-size:12px;color:var(--t-muted);margin-top:9px}
   .trend{font-size:11.5px;font-weight:600;border-radius:5px;padding:2px 7px;margin-left:auto}
   .trend.red{color:var(--red);background:var(--red-soft)}
@@ -225,8 +233,8 @@
   .sev::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
   .sev.critical{color:var(--sev-crit);background:#FBE3E5}
   .sev.high{color:var(--sev-high);background:var(--red-soft)}
-  .sev.medium{color:var(--sev-med);background:#FEF3E6}
-  .sev.low{color:var(--sev-low);background:var(--blue-soft)}
+  .sev.medium{color:var(--sev-med);background:var(--orange-soft)}
+  .sev.low{color:var(--sev-low);background:var(--amber-soft)}
 
   .status{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;letter-spacing:.04em}
   .status.fail{color:var(--red)}
@@ -296,7 +304,7 @@
   .toast button{background:none;border:0;color:#8FB4FF;font-weight:600;font-size:13px;padding:0}
 
   @media (max-width:1180px){
-    .stats{grid-template-columns:repeat(2,1fr)}
+    .stats{grid-template-columns:repeat(3,1fr)}
     .grid-2,.assess-grid{grid-template-columns:1fr}
     .top-fails{grid-template-columns:1fr}
   }
@@ -309,11 +317,35 @@
     table{display:block;overflow-x:auto;white-space:nowrap}
   }
 
+/* ---------- layout: lock app to viewport, but only constrain the
+   Assessment screen's two-panel layout — other screens scroll normally ---------- */
 .app{height:100vh;overflow:hidden}
 .main{height:100vh;display:flex;flex-direction:column;overflow:hidden}
 .topbar{flex-shrink:0}
-.view.active{flex:1;display:flex;flex-direction:column;overflow:hidden;padding:26px 28px 28px}
-.assess-grid,.grid-2{flex:1;align-items:stretch;min-height:0}
-.panel{display:flex;flex-direction:column;min-height:0}
-.panel-body{flex:1;min-height:0;overflow:hidden}
+.view.active{flex:1;overflow-y:auto}
+.assess-grid{height:calc(100vh - 230px);align-items:stretch}
+.assess-grid .panel{display:flex;flex-direction:column;min-height:0;height:100%}
+.assess-grid .panel-body{flex:1;min-height:0;overflow:hidden}
 
+/* ---------- chat panel additions ---------- */
+.q-line{border-left:2px solid var(--line);padding:6px 0 6px 12px;margin:4px 0 14px;font-size:13px;color:var(--t-muted)}
+.a-summary{font-size:13.5px;color:var(--t-body);line-height:1.55;margin:0 0 14px}
+.finding{border-left:3px solid;border-radius:8px;padding:10px 12px;margin-bottom:10px}
+.finding.high{border-color:var(--red);background:var(--red-soft)}
+.finding.medium{border-color:var(--sev-med);background:var(--orange-soft)}
+.finding.low{border-color:var(--sev-low);background:var(--amber-soft)}
+.finding-top{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.finding-top svg{width:12px;height:12px}
+.finding.high .finding-top,.finding.high .finding-id{color:var(--red)}
+.finding.medium .finding-top,.finding.medium .finding-id{color:var(--sev-med)}
+.finding.low .finding-top,.finding.low .finding-id{color:var(--sev-low)}
+.finding-id{font-family:"JetBrains Mono","SF Mono",ui-monospace,monospace;font-size:11.5px;font-weight:600}
+.finding-desc{font-size:13px;color:var(--t-strong);line-height:1.5}
+.composer{display:flex;gap:8px;padding-top:14px;margin-top:6px;border-top:1px solid var(--line-soft);flex-shrink:0}
+.composer input{flex:1;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit;font-size:13px;background:#FBFCFE;color:var(--t-strong)}
+.composer input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(29,78,216,.12);background:#fff}
+.composer input:disabled{opacity:.6}
+.composer button{width:38px;height:38px;border-radius:8px;background:var(--blue);border:0;display:grid;place-items:center;flex-shrink:0}
+.composer button:disabled{opacity:.55;cursor:default}
+.composer button svg{width:15px;height:15px;fill:#fff}
+.log-scroll{flex:1;overflow-y:auto;min-height:0}
