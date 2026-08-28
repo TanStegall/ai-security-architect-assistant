@@ -6,18 +6,7 @@ import Topbar from "@/components/Topbar";
 import ArchitectureInput from "@/components/ArchitectureInput";
 import ChatPanel, { ChatPanelHandle, Finding, Severity } from "@/components/ChatPanel";
 
-type View = "dashboard" | "assessment" | "findings";
-
-function parseControlId(title: string): { control: string; framework: string; description: string } {
-  const match = title.match(/^\[(.+?)\]\s*(.*)/);
-  if (match) {
-    const full = match[1]; // e.g. "NIST 800-53 IA-2"
-    const parts = full.split(" ");
-    const framework = parts.slice(0, -1).join(" ") || full;
-    return { control: full, framework, description: match[2] };
-  }
-  return { control: "—", framework: "Unspecified", description: title };
-}
+type View = "dashboard" | "assessment" | "findings" | "reports";
 
 const SEV_COLOR: Record<Severity, string> = {
   high: "var(--red)",
@@ -95,8 +84,7 @@ function SeverityDonut({ findings }: { findings: Finding[] }) {
 function FrameworkBreakdown({ findings }: { findings: Finding[] }) {
   const counts = new Map<string, number>();
   findings.forEach((f) => {
-    const { framework } = parseControlId(f.title);
-    counts.set(framework, (counts.get(framework) ?? 0) + 1);
+    counts.set(f.framework, (counts.get(f.framework) ?? 0) + 1);
   });
   const entries = [...counts.entries()].sort((a, b) => b[1] - a[1]);
   const max = entries.length > 0 ? entries[0][1] : 1;
@@ -121,6 +109,27 @@ function FrameworkBreakdown({ findings }: { findings: Finding[] }) {
         </div>
       ))}
     </>
+  );
+}
+
+function FindingCard({ f }: { f: Finding }) {
+  return (
+    <div className={`finding-card ${f.severity}`}>
+      <div className="finding-card-head">
+        <span className={`sev ${f.severity}`}>{f.severity}</span>
+        <span className="finding-card-control mono">
+          {f.framework} · {f.controlId}
+        </span>
+      </div>
+      <div className="finding-card-location">
+        Found in: <b>{f.component}</b>
+      </div>
+      <p className="finding-card-summary">{f.summary}</p>
+      <div className="finding-card-remediation">
+        <span className="finding-card-remediation-label">Remediation</span>
+        <p>{f.remediation}</p>
+      </div>
+    </div>
   );
 }
 
@@ -190,7 +199,7 @@ export default function Home() {
   const highCount = findings.filter((f) => f.severity === "high").length;
   const mediumCount = findings.filter((f) => f.severity === "medium").length;
   const lowCount = findings.filter((f) => f.severity === "low").length;
-  const frameworksCited = new Set(findings.map((f) => parseControlId(f.title).framework)).size;
+  const frameworksCited = new Set(findings.map((f) => f.framework)).size;
 
   const topFindings = [...findings]
     .sort((a, b) => {
@@ -199,12 +208,28 @@ export default function Home() {
     })
     .slice(0, 3);
 
+  const reportDate = new Date().toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
   return (
     <div className="app">
       <Sidebar activeView={view} onNavigate={setView} findingsCount={findings.length} />
 
       <div className="main">
-        <Topbar crumb={view === "dashboard" ? "Dashboard" : view === "findings" ? "Findings" : "Assessment"} />
+        <Topbar
+          crumb={
+            view === "dashboard"
+              ? "Dashboard"
+              : view === "findings"
+              ? "Findings"
+              : view === "reports"
+              ? "Reports"
+              : "Assessment"
+          }
+        />
 
         {view === "dashboard" && (
           <section className="view active">
@@ -289,20 +314,19 @@ export default function Home() {
                 </div>
               ) : (
                 <div className="top-fails">
-                  {topFindings.map((f, i) => {
-                    const { control, description: desc } = parseControlId(f.title);
-                    return (
-                      <div className="fail-card" key={i}>
-                        <div className="cid mono">{control}</div>
-                        <div className="txt">{desc}</div>
-                        <div className="meta">
-                          <span>{f.severity.toUpperCase()}</span>
-                          <span className="dot" />
-                          <span>This session</span>
-                        </div>
+                  {topFindings.map((f, i) => (
+                    <div className="fail-card" key={i}>
+                      <div className="cid mono">
+                        {f.framework} · {f.controlId}
                       </div>
-                    );
-                  })}
+                      <div className="txt">{f.summary}</div>
+                      <div className="meta">
+                        <span>{f.severity.toUpperCase()}</span>
+                        <span className="dot" />
+                        <span>Found in {f.component}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -357,33 +381,102 @@ export default function Home() {
                   <div className="panel-head">
                     <h3>All findings</h3>
                   </div>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Control</th>
-                        <th>Finding</th>
-                        <th>Severity</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {findings.map((f, i) => {
-                        const { control, description: desc } = parseControlId(f.title);
-                        return (
-                          <tr key={i}>
-                            <td>
-                              <div className="ctrl-id mono">{control}</div>
-                            </td>
-                            <td>
-                              <div className="ctrl-req">{desc}</div>
-                            </td>
-                            <td>
-                              <span className={`sev ${f.severity}`}>{f.severity}</span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                  <div className="panel-body">
+                    {findings.map((f, i) => (
+                      <FindingCard key={i} f={f} />
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </section>
+        )}
+
+        {view === "reports" && (
+          <section className="view active">
+            <div className="report-header">
+              <div>
+                <h1>Security Assessment Report</h1>
+                <div className="report-date">Generated {reportDate}</div>
+              </div>
+              <button className="btn btn-primary no-print" onClick={() => window.print()} disabled={findings.length === 0}>
+                Print / Save as PDF
+              </button>
+            </div>
+
+            {findings.length === 0 ? (
+              <div className="panel">
+                <div className="panel-body">
+                  <div className="log-empty">
+                    <b>Nothing to report yet</b>
+                    Run an assessment first — this report is generated from your session&apos;s findings.
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="stats" style={{ marginBottom: 16 }}>
+                  <div className="stat">
+                    <div className="stat-top">
+                      <span className="stat-label">Total findings</span>
+                    </div>
+                    <div className="stat-value">{findings.length}</div>
+                  </div>
+                  <div className="stat">
+                    <div className="stat-top">
+                      <span className="stat-label">High</span>
+                    </div>
+                    <div className="stat-value danger">{highCount}</div>
+                  </div>
+                  <div className="stat">
+                    <div className="stat-top">
+                      <span className="stat-label">Medium</span>
+                    </div>
+                    <div className="stat-value orange">{mediumCount}</div>
+                  </div>
+                  <div className="stat">
+                    <div className="stat-top">
+                      <span className="stat-label">Low</span>
+                    </div>
+                    <div className="stat-value amber">{lowCount}</div>
+                  </div>
+                  <div className="stat">
+                    <div className="stat-top">
+                      <span className="stat-label">Frameworks cited</span>
+                    </div>
+                    <div className="stat-value">{frameworksCited}</div>
+                  </div>
+                </div>
+
+                <div className="grid-2" style={{ marginBottom: 16 }}>
+                  <div className="panel">
+                    <div className="panel-head">
+                      <h3>Severity breakdown</h3>
+                    </div>
+                    <div className="panel-body">
+                      <SeverityDonut findings={findings} />
+                    </div>
+                  </div>
+
+                  <div className="panel">
+                    <div className="panel-head">
+                      <h3>By framework</h3>
+                    </div>
+                    <div className="panel-body">
+                      <FrameworkBreakdown findings={findings} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="panel">
+                  <div className="panel-head">
+                    <h3>Detailed findings</h3>
+                  </div>
+                  <div className="panel-body">
+                    {findings.map((f, i) => (
+                      <FindingCard key={i} f={f} />
+                    ))}
+                  </div>
                 </div>
               </>
             )}

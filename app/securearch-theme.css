@@ -349,3 +349,34 @@
 .composer button:disabled{opacity:.55;cursor:default}
 .composer button svg{width:15px;height:15px;fill:#fff}
 .log-scroll{flex:1;overflow-y:auto;min-height:0}
+
+/* ---------- print / PDF export ---------- */
+@media print {
+  .sidebar, .topbar, .no-print { display: none !important; }
+  .app, .main, .view.active { height: auto !important; overflow: visible !important; }
+  body { background: #fff; }
+  .panel { box-shadow: none; border: 1px solid #ddd; }
+  .exposure { background: #fff !important; color: #101828 !important; border: 1px solid #ddd; }
+  .exposure h2, .exposure p { color: #101828 !important; }
+  .fail-card { background: #fff !important; border: 1px solid #ddd !important; }
+  .fail-card .cid, .fail-card .txt, .fail-card .meta { color: #101828 !important; }
+}
+.report-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 22px; }
+.report-header h1 { margin: 0 0 4px; }
+.report-date { font-size: 12.5px; color: var(--t-muted); }
+
+/* ---------- finding cards (replaces plain table for detailed view) ---------- */
+.finding-card{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:8px;padding:16px 18px;margin-bottom:12px}
+.finding-card.high{border-left-color:var(--red)}
+.finding-card.medium{border-left-color:var(--sev-med)}
+.finding-card.low{border-left-color:var(--sev-low)}
+.finding-card-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.finding-card-control{font-size:12px;font-weight:600;color:var(--t-strong)}
+.finding-card-component{font-size:12px;color:var(--t-muted);margin-left:auto}
+.finding-card-summary{font-size:13.5px;color:var(--t-body);line-height:1.55;margin:0 0 12px}
+.finding-card-remediation{background:#F7F9FC;border:1px solid var(--line-soft);border-radius:6px;padding:10px 12px}
+.finding-card-remediation-label{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--t-muted);display:block;margin-bottom:4px}
+.finding-card-remediation p{margin:0;font-size:13px;color:var(--t-strong);line-height:1.5}
+
+.finding-card-location{font-size:12.5px;color:var(--t-muted);margin-bottom:10px}
+.finding-card-location b{color:var(--t-strong);font-weight:600}

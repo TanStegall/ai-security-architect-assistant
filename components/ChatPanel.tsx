@@ -5,7 +5,11 @@ export type Severity = "high" | "medium" | "low";
 
 export interface Finding {
   severity: Severity;
-  title: string;
+  framework: string;
+  controlId: string;
+  component: string;
+  summary: string;
+  remediation: string;
 }
 
 interface UserMessage {
@@ -102,7 +106,7 @@ function AssistantMessageBubble({ content, findings }: { content: string; findin
           color: "#e2e8f0",
           padding: "12px 14px",
           borderRadius: "12px 12px 12px 2px",
-          maxWidth: "85%",
+          maxWidth: "90%",
           fontSize: 14,
           lineHeight: 1.5,
         }}
@@ -115,36 +119,51 @@ function AssistantMessageBubble({ content, findings }: { content: string; findin
         </div>
         <div>{content}</div>
         {findings && (
-          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
             {findings.map((f, i) => {
               const s = SEVERITY_STYLES[f.severity];
               return (
                 <div
                   key={i}
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "8px 10px",
+                    padding: "10px 12px",
                     borderRadius: 6,
                     background: s.bg,
                     border: `1px solid ${s.border}`,
                   }}
                 >
-                  <ShieldAlert size={13} color={s.color} style={{ flexShrink: 0 }} />
-                  <span
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                    <ShieldAlert size={13} color={s.color} style={{ flexShrink: 0 }} />
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        letterSpacing: 0.5,
+                        textTransform: "uppercase",
+                        color: s.color,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {f.severity}
+                    </span>
+                    <span style={{ fontSize: 11.5, fontFamily: "monospace", color: "#cbd5e1" }}>
+                      {f.framework} · {f.controlId}
+                    </span>
+                    <span style={{ fontSize: 11, color: "#64748b", marginLeft: "auto" }}>{f.component}</span>
+                  </div>
+                  <p style={{ fontSize: 13, color: "#e2e8f0", margin: "0 0 8px", lineHeight: 1.5 }}>{f.summary}</p>
+                  <div
                     style={{
-                      fontSize: 10,
-                      fontWeight: 700,
-                      letterSpacing: 0.5,
-                      textTransform: "uppercase",
-                      color: s.color,
-                      flexShrink: 0,
+                      background: "rgba(0,0,0,0.15)",
+                      borderRadius: 4,
+                      padding: "6px 8px",
                     }}
                   >
-                    {f.severity}
-                  </span>
-                  <span style={{ fontSize: 13, color: "#cbd5e1" }}>{f.title}</span>
+                    <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase", color: "#8b98ab", marginBottom: 2 }}>
+                      Remediation
+                    </div>
+                    <p style={{ fontSize: 12.5, color: "#cbd5e1", margin: 0, lineHeight: 1.5 }}>{f.remediation}</p>
+                  </div>
                 </div>
               );
             })}
@@ -185,9 +204,6 @@ const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(({ onFindings }, r
       const data: { events: Message[] } = await res.json();
       setMessages((prev) => [...prev, ...data.events]);
 
-      // Report any findings from this response up to the parent, so the
-      // Dashboard/Findings screens can show them without ChatPanel needing
-      // to know anything about those screens.
       const newFindings = data.events
         .filter((e): e is AssistantMessageType => e.role === "assistant" && !!e.findings)
         .flatMap((e) => e.findings!);

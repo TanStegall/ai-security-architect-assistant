@@ -3,6 +3,14 @@ import Anthropic from "@anthropic-ai/sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
+/**
+ * Findings are now structured, not a single title string. Every finding
+ * must include WHERE it applies (component), WHAT the actual problem is
+ * (summary), and WHAT TO DO about it (remediation) — not just a control
+ * citation. This is enforced by the report_findings tool schema below,
+ * so Claude cannot skip these fields.
+ */
+
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
@@ -44,9 +52,17 @@ You have access to a real compliance framework reference server (NIST 800-53, HI
 Your job:
 1. Identify which security-relevant areas are worth checking based on what the user described or asked about (e.g. authentication, storage, network exposure, secrets management, logging).
 2. Use search_compliance_controls to find real controls relevant to each area. Use get_compliance_control_detail if you need the full text of a specific control before citing it.
-3. Once you have enough grounded findings, call report_findings with a short summary and a list of specific findings. Each finding's title MUST reference the specific framework and control ID it's based on, e.g. "[NIST 800-53 AC-3] Confirm the API gateway enforces access control before reaching Azure OpenAI."
+3. Once you have enough grounded findings, call report_findings.
 
-Only search for controls relevant to what the user actually described or asked — don't search everything every time. Aim to gather 2-4 relevant controls, then stop searching and report. Keep the summary to 1-2 sentences. If you cannot find a relevant control for something, do not fabricate one — either search again with different terms or omit that point.
+For EVERY finding, you must provide all of the following — this is not optional:
+- severity: high, medium, or low
+- framework: the framework name only, e.g. "NIST 800-53" (not the control ID)
+- control_id: the control ID only, e.g. "AC-3"
+- component: the SPECIFIC part of the architecture this applies to, using the user's own terminology where possible (e.g. "API gateway", "Blob Storage container", "payment webhook endpoint") — never leave this generic
+- summary: 1-2 sentences describing the ACTUAL vulnerability or gap in THIS architecture — not the control's generic textbook definition. Say what is specifically missing, unconfirmed, or risky based on what the user described.
+- remediation: concrete, actionable steps an engineer could follow immediately to fix or verify this. Be specific (name settings, mechanisms, or configurations to change) rather than vague advice like "improve security."
+
+Only search for controls relevant to what the user actually described or asked — don't search everything every time. Aim to gather 2-4 relevant controls, then stop searching and report. Keep the overall summary to 1-2 sentences. If you cannot find a relevant control for something, do not fabricate one — either search again with different terms or omit that point.
 
 Important: once you have gathered enough grounded findings, call report_findings immediately in that same turn. Do not send a plain-text message announcing that you are ready or that you have enough information — go straight to calling the tool.`;
 
@@ -81,19 +97,20 @@ const tools: Anthropic.Tool[] = [
     input_schema: {
       type: "object",
       properties: {
-        summary: { type: "string", description: "A 1-2 sentence summary of the review" },
+        summary: { type: "string", description: "A 1-2 sentence overall summary of the review" },
         findings: {
           type: "array",
           items: {
             type: "object",
             properties: {
               severity: { type: "string", enum: ["high", "medium", "low"] },
-              title: {
-                type: "string",
-                description: "Must start with [FRAMEWORK CONTROL_ID] followed by the specific, actionable finding",
-              },
+              framework: { type: "string", description: "Framework name only, e.g. 'NIST 800-53'" },
+              control_id: { type: "string", description: "Control ID only, e.g. 'AC-3'" },
+              component: { type: "string", description: "The specific architecture component this applies to" },
+              summary: { type: "string", description: "The actual, specific vulnerability or gap found" },
+              remediation: { type: "string", description: "Concrete, actionable steps to fix or verify this" },
             },
-            required: ["severity", "title"],
+            required: ["severity", "framework", "control_id", "component", "summary", "remediation"],
           },
         },
       },
@@ -109,10 +126,19 @@ interface ToolEvent {
   result: string;
 }
 
+interface Finding {
+  severity: "high" | "medium" | "low";
+  framework: string;
+  controlId: string;
+  component: string;
+  summary: string;
+  remediation: string;
+}
+
 interface AssistantEvent {
   role: "assistant";
   content: string;
-  findings?: { severity: "high" | "medium" | "low"; title: string }[];
+  findings?: Finding[];
 }
 
 export async function POST(req: NextRequest) {
@@ -216,10 +242,26 @@ export async function POST(req: NextRequest) {
         if (block.name === "report_findings") {
           const input = block.input as {
             summary: string;
-            findings: { severity: "high" | "medium" | "low"; title: string }[];
+            findings: {
+              severity: "high" | "medium" | "low";
+              framework: string;
+              control_id: string;
+              component: string;
+              summary: string;
+              remediation: string;
+            }[];
           };
 
-          events.push({ role: "assistant", content: input.summary, findings: input.findings });
+          const findings: Finding[] = input.findings.map((f) => ({
+            severity: f.severity,
+            framework: f.framework,
+            controlId: f.control_id,
+            component: f.component,
+            summary: f.summary,
+            remediation: f.remediation,
+          }));
+
+          events.push({ role: "assistant", content: input.summary, findings });
           toolResults.push({ type: "tool_result", tool_use_id: block.id, content: "Findings recorded." });
           finishedWithFindings = true;
           hasReportedFindings = true;
