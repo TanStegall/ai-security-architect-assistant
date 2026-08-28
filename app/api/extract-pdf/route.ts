@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractText, getDocumentProxy } from "unpdf";
+import { getClientIp, checkRateLimit } from "@/lib/security";
 
 /**
  * Accepts a PDF file upload and returns its extracted text.
@@ -8,16 +9,30 @@ import { extractText, getDocumentProxy } from "unpdf";
  * (Analyze -> Claude -> MCP -> findings) is completely unchanged,
  * since it only ever cared about receiving a text description.
  *
- * Uses unpdf instead of pdf-parse — pdf-parse's module packaging
- * repeatedly broke under Next.js's bundler (default export mismatches,
- * MODULE_NOT_FOUND on internal paths). unpdf is a modern package built
- * specifically for serverless/edge Node environments like this one.
+ * Uses unpdf — a modern package built for serverless/edge Node
+ * environments, chosen after pdf-parse repeatedly broke under
+ * Next.js's bundler.
  */
 
 const MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+const RATE_LIMIT = 20; // requests
+const RATE_WINDOW_MS = 10 * 60 * 1000; // per 10 minutes
 
 export async function POST(req: NextRequest) {
   try {
+    const clientIp = getClientIp(req);
+    const rateLimitResult = checkRateLimit(clientIp, RATE_LIMIT, RATE_WINDOW_MS);
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        {
+          error: `You're uploading too quickly. Please wait about ${Math.ceil(
+            rateLimitResult.retryAfterSeconds / 60
+          )} minute(s) and try again.`,
+        },
+        { status: 429 }
+      );
+    }
+
     const formData = await req.formData();
     const file = formData.get("file");
 
@@ -53,3 +68,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Something went wrong reading that PDF." }, { status: 500 });
   }
 }
+
