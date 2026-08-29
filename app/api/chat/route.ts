@@ -21,7 +21,7 @@ const MCP_TOKEN = process.env.KYORA_MCP_TOKEN;
 
 const RATE_LIMIT = 15; // requests
 const RATE_WINDOW_MS = 10 * 60 * 1000; // per 10 minutes
-const MAX_MESSAGE_LENGTH = 8000; // characters — generous for a real architecture description
+const MAX_MESSAGE_LENGTH = 30000; // characters — generous enough for a full multi-page architecture/threat-model document, not just a short description
 
 let mcpClientPromise: Promise<Client> | null = null;
 
@@ -146,6 +146,41 @@ interface AssistantEvent {
   role: "assistant";
   content: string;
   findings?: Finding[];
+}
+
+const VALID_SEVERITIES = ["high", "medium", "low"] as const;
+
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === "string" && v.trim().length > 0;
+}
+
+/**
+ * "Never trust model output" — Claude's tool call arguments are supposed to
+ * match the report_findings schema, but nothing guarantees that at runtime.
+ * A TypeScript `as` cast is a compile-time hint only; it performs no actual
+ * check. This function validates each finding for real and drops anything
+ * malformed rather than silently rendering broken or empty data as if it
+ * were a clean result.
+ */
+function validateRawFinding(raw: unknown): Finding | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+
+  if (!VALID_SEVERITIES.includes(r.severity as (typeof VALID_SEVERITIES)[number])) return null;
+  if (!isNonEmptyString(r.framework)) return null;
+  if (!isNonEmptyString(r.control_id)) return null;
+  if (!isNonEmptyString(r.component)) return null;
+  if (!isNonEmptyString(r.summary)) return null;
+  if (!isNonEmptyString(r.remediation)) return null;
+
+  return {
+    severity: r.severity as "high" | "medium" | "low",
+    framework: (r.framework as string).trim(),
+    controlId: (r.control_id as string).trim(),
+    component: (r.component as string).trim(),
+    summary: (r.summary as string).trim(),
+    remediation: (r.remediation as string).trim(),
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -294,28 +329,34 @@ export async function POST(req: NextRequest) {
         }
 
         if (block.name === "report_findings") {
-          const input = block.input as {
-            summary: string;
-            findings: {
-              severity: "high" | "medium" | "low";
-              framework: string;
-              control_id: string;
-              component: string;
-              summary: string;
-              remediation: string;
-            }[];
-          };
+          const rawInput = block.input as { summary?: unknown; findings?: unknown };
 
-          const findings: Finding[] = input.findings.map((f) => ({
-            severity: f.severity,
-            framework: f.framework,
-            controlId: f.control_id,
-            component: f.component,
-            summary: f.summary,
-            remediation: f.remediation,
-          }));
+          const rawFindings = Array.isArray(rawInput.findings) ? rawInput.findings : [];
+          const validated = rawFindings.map(validateRawFinding);
+          const findings: Finding[] = validated.filter((f): f is Finding => f !== null);
+          const droppedCount = rawFindings.length - findings.length;
 
-          events.push({ role: "assistant", content: input.summary, findings });
+          const summaryText = isNonEmptyString(rawInput.summary) ? rawInput.summary.trim() : "";
+
+          if (findings.length === 0) {
+            // Every finding failed validation (or none were provided) — never
+            // silently show an empty result as if it were a clean bill of health.
+            events.push({
+              role: "assistant",
+              content:
+                "The analysis didn't return any findings that passed validation. This isn't necessarily a clean result — please try asking again.",
+            });
+          } else {
+            events.push({
+              role: "assistant",
+              content:
+                droppedCount > 0
+                  ? `${summaryText || "Review complete."} (Note: ${droppedCount} finding(s) were dropped for failing validation.)`
+                  : summaryText || "Review complete.",
+              findings,
+            });
+          }
+
           toolResults.push({ type: "tool_result", tool_use_id: block.id, content: "Findings recorded." });
           finishedWithFindings = true;
           hasReportedFindings = true;

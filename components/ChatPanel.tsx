@@ -199,9 +199,16 @@ const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(({ onFindings }, r
         body: JSON.stringify({ message: trimmed }),
       });
 
-      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-
+      // Every response from route.ts — success, validation error, rate
+      // limit, or server error — includes a well-formed `events` array with
+      // a specific, helpful message. Always try to read and show that real
+      // message instead of discarding it whenever res.ok happens to be false.
       const data: { events: Message[] } = await res.json();
+
+      if (!data?.events || data.events.length === 0) {
+        throw new Error(`Request failed: ${res.status}`);
+      }
+
       setMessages((prev) => [...prev, ...data.events]);
 
       const newFindings = data.events
