@@ -20,10 +20,44 @@ jobs:
         with:
           node-version: '24.x'
 
-      - name: npm ci and build
+      - name: npm ci
+        run: npm ci
+
+      - name: Dependency vulnerability scan
+        run: npm audit --audit-level=high
+
+      - name: Build
+        run: npm run build
+
+      - name: Start server for security testing
         run: |
-          npm ci
-          npm run build
+          node .next/standalone/server.js &
+          echo $! > server.pid
+        env:
+          PORT: 3000
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          KYORA_MCP_TOKEN: ${{ secrets.KYORA_MCP_TOKEN }}
+
+      - name: Wait for server to be ready
+        run: |
+          for i in $(seq 1 30); do
+            if curl -s http://localhost:3000 > /dev/null; then
+              echo "Server is up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Server did not become ready in time"
+          exit 1
+
+      - name: Run prompt-injection test suite
+        run: npx tsx test-injection.ts
+        env:
+          API_URL: http://localhost:3000
+
+      - name: Stop test server
+        if: always()
+        run: kill "$(cat server.pid)" || true
 
       - name: Assemble standalone deployment package
         run: |
@@ -65,3 +99,4 @@ jobs:
           app-name: 'ai-security-architect'
           slot-name: 'Production'
           package: .
+ 
